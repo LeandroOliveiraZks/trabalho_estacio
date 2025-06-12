@@ -1,193 +1,138 @@
-import tkinter as tk
-from tkinter import messagebox
 import sqlite3
+import tkinter as tk
+from tkinter import messagebox, ttk
 
+def criar_banco():
+    conn = sqlite3.connect("escola.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alunos (
+        matricula INTEGER PRIMARY KEY,
+        nome TEXT NOT NULL
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS disciplinas (
+        codigo TEXT PRIMARY KEY,
+        nome TEXT NOT NULL
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS notas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matricula INTEGER,
+        codigo TEXT,
+        nota REAL,
+        FOREIGN KEY (matricula) REFERENCES alunos(matricula),
+        FOREIGN KEY (codigo) REFERENCES disciplinas(codigo)
+    )""")
+    conn.commit()
+    conn.close()
 
-def criar_bancodados():
-    conexao = sqlite3.connect('escola.db')
-    cursor = conexao.cursor()
+def executar_query(query, params=()):
+    conn = sqlite3.connect("estacio.db")
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    conn.commit()
+    conn.close()
 
-    cursor.execute('''CREATE TABLE IF NOT EXISTS alunos (
-                        matricula INTEGER PRIMARY KEY,
-                        nome TEXT NOT NULL)''')
+def listar_query(query):
+    conn = sqlite3.connect("estacio.db")
+    cursor = conn.cursor()
+    cursor.execute(query)
+    dados = cursor.fetchall()
+    conn.close()
+    return dados
 
-    cursor.execute('''CREATE TABLE IF NOT EXISTS disciplinas (
-                        codigo INTEGER PRIMARY KEY,
-                        nome TEXT NOT NULL)''')
-
-    cursor.execute('''CREATE TABLE IF NOT EXISTS notas (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        matricula INTEGER,
-                        codigo INTEGER,
-                        nota REAL,
-                        FOREIGN KEY (matricula) REFERENCES alunos (matricula),
-                        FOREIGN KEY (codigo) REFERENCES disciplinas (codigo))''')
-
-    conexao.commit()
-    conexao.close()
-
-   
-
-
-def adicionar_aluno(matricula, nome):
+def incluir_dados(tabela, campos, valores):
+    query = f"INSERT INTO {tabela} ({','.join(campos)}) VALUES ({','.join(['?' for _ in valores])})"
     try:
-        conexao = sqlite3.connect('escola.db')
-        cursor = conexao.cursor()
-        cursor.execute("INSERT INTO alunos (matricula, nome) VALUES (?, ?)", (matricula, nome))
-        conexao.commit()
+        executar_query(query, valores)
+        messagebox.showinfo("Sucesso", f"Dados inseridos na tabela {tabela}.")
     except sqlite3.IntegrityError:
-        messagebox.showerror("Erro", "Matrícula já cadastrada.")
-    finally:
-        conexao.close()
+        messagebox.showerror("Erro", f"Chave já cadastrada na tabela {tabela}.")
 
-def adicionar_disciplina(codigo, nome):
-    try:
-        conexao = sqlite3.connect('escola.db')
-        cursor = conexao.cursor()
-        cursor.execute("INSERT INTO disciplinas (codigo, nome) VALUES (?, ?)", (codigo, nome))
-        conexao.commit()
-    except sqlite3.IntegrityError:
-        messagebox.showerror("Erro", "Código de disciplina já cadastrado.")
-    finally:
-        conexao.close()
+def excluir_dado(tabela, chave, valor):
+    query = f"DELETE FROM {tabela} WHERE {chave} = ?"
+    executar_query(query, (valor,))
+    messagebox.showinfo("Remoção", f"Registro removido da tabela {tabela}.")
 
-def adicionar_nota(matricula, codigo, nota):
-    if nota < 0 or nota > 10:
-        messagebox.showerror("Erro", "Nota deve estar entre 0 e 10.")
-        return
+def alterar_dado(tabela, campos, valores, chave, chave_valor):
+    sets = ', '.join([f"{campo} = ?" for campo in campos])
+    query = f"UPDATE {tabela} SET {sets} WHERE {chave} = ?"
+    executar_query(query, (*valores, chave_valor))
+    messagebox.showinfo("Atualização", f"Registro da tabela {tabela} atualizado.")
 
-    conexao = sqlite3.connect('escola.db')
-    cursor = conexao.cursor()
+def listar_dados(tabela):
+    dados = listar_query(f"SELECT * FROM {tabela}")
+    return "\n".join(str(d) for d in dados)
 
-    cursor.execute("SELECT * FROM alunos WHERE matricula = ?", (matricula,))
-    if not cursor.fetchone():
-        messagebox.showerror("Erro", "Aluno não encontrado.")
-        conexao.close()
-        return
+def criar_interface():
+    root = tk.Tk()
+    root.title("Cadastro de Alunos, Disciplinas e Notas")
+    root.geometry("600x500")
+    root.configure(bg="#e6f2ff")  
 
-    cursor.execute("SELECT * FROM disciplinas WHERE codigo = ?", (codigo,))
-    if not cursor.fetchone():
-        messagebox.showerror("Erro", "Disciplina não encontrada.")
-        conexao.close()
-        return
+    frame = tk.Frame(root, padx=20, pady=20, bg="#e6f2ff")
+    frame.pack(fill="both", expand=True)
 
-    cursor.execute("INSERT INTO notas (matricula, codigo, nota) VALUES (?, ?, ?)", (matricula, codigo, nota))
-    conexao.commit()
-    conexao.close()
+    campos = {
+        "alunos": ["matricula", "nome"],
+        "disciplinas": ["codigo", "nome"],
+        "notas": ["matricula", "codigo", "nota"]
+    }
 
-def buscar_notas(matricula):
-    conexao = sqlite3.connect('escola.db')
-    cursor = conexao.cursor()
+    def janela_acao(acao):
+        janela = tk.Toplevel(bg="#f2f2f2")
+        janela.title(f"{acao.title()} Dados")
+        janela.geometry("500x500")
+        aba = ttk.Notebook(janela)
+        aba.pack(expand=True, fill='both')
 
-    cursor.execute('''SELECT disciplinas.nome, notas.nota 
-                      FROM notas 
-                      JOIN disciplinas ON notas.codigo = disciplinas.codigo 
-                      WHERE notas.matricula = ?''', (matricula,))
-    resultados = cursor.fetchall()
-    conexao.close()
-    return resultados
+        for tabela, colunas in campos.items():
+            tab = tk.Frame(aba, bg="#f2f2f2")
+            aba.add(tab, text=tabela.title())
+            entradas = []
+            for i, campo in enumerate(colunas):
+                tk.Label(tab, text=campo, bg="#f2f2f2").grid(row=i, column=0, pady=5, padx=5)
+                e = tk.Entry(tab)
+                e.grid(row=i, column=1, pady=5, padx=5)
+                entradas.append(e)
 
-class Interface:
-    def __init__(self, master):
-        self.master = master
-        master.title("Cadastro de Alunos, Disciplinas e Notas")
-        master.configure(bg="#f0f0f0")
+            if acao == "alterar":
+                novos = []
+                for i, campo in enumerate(colunas):
+                    tk.Label(tab, text=f"Novo {campo}", bg="#f2f2f2").grid(row=i + len(colunas), column=0, pady=5, padx=5)
+                    en = tk.Entry(tab)
+                    en.grid(row=i + len(colunas), column=1, pady=5, padx=5)
+                    novos.append(en)
 
-        
-        screen_width = master.winfo_screenwidth()
-        screen_height = master.winfo_screenheight()
-        width = 600
-        height = 600
-        x = (screen_width // 2) - (width // 2)
-        y = (screen_height // 2) - (height // 2)
-        master.geometry(f"{width}x{height}+{x}+{y}")
-        section_font = ("Arial", 14, "bold")
-        label_font = ("Arial", 12)
-        button_font = ("Arial", 10, "bold")
-        main_frame = tk.Frame(master, bg="#f0f0f0")
-        main_frame.pack(expand=True, fill="both", padx=10, pady=10)
+            def acao_local(t=tabela, es=entradas, ns=novos if acao == "alterar" else []):
+                if acao == "incluir":
+                    incluir_dados(t, campos[t], [e.get() for e in es])
+                elif acao == "excluir":
+                    excluir_dado(t, campos[t][0], es[0].get())
+                elif acao == "alterar":
+                    alterar_dado(t, campos[t], [n.get() for n in ns], campos[t][0], es[0].get())
+                elif acao == "listar":
+                    dados = listar_dados(t)
+                    messagebox.showinfo("Listagem", dados if dados else "Nada encontrado.")
 
-        
-        aluno_frame = tk.LabelFrame(main_frame, text="Cadastro do Aluno", font=section_font, bg="#f0f0f0", fg="#333333", padx=10, pady=10)
-        aluno_frame.pack(fill="x", pady=10)
-        tk.Label(aluno_frame, text="Matrícula:", bg="#f0f0f0", fg="#333333", font=label_font).grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.matricula_entry = tk.Entry(aluno_frame, bg="#ffffff", fg="#333333", font=label_font, width=30)
-        self.matricula_entry.grid(row=0, column=1, padx=5, pady=5)
+            tk.Button(tab, text=acao.title(), command=acao_local, bg="#007acc", fg="white", width=20).grid(row=30, column=0, columnspan=2, pady=20)
 
-        tk.Label(aluno_frame, text="Nome:", bg="#f0f0f0", fg="#333333", font=label_font).grid(row=1, column=0, sticky="e", padx=5, pady=5)
-        self.nome_entry = tk.Entry(aluno_frame, bg="#ffffff", fg="#333333", font=label_font, width=30)
-        self.nome_entry.grid(row=1, column=1, padx=5, pady=5)
+    titulo = tk.Label(frame, text="Sistema Acadêmico", font=("Helvetica", 16, "bold"), bg="#e6f2ff", fg="#003366")
+    titulo.pack(pady=10)
 
-        tk.Button(aluno_frame, text="Adicionar Aluno", command=self.add_aluno, bg="#4CAF50", fg="white", font=button_font).grid(row=2, column=0, columnspan=2, pady=10)
+    botoes = [
+        ("Incluir", lambda: janela_acao("incluir")),
+        ("Alterar", lambda: janela_acao("alterar")),
+        ("Excluir", lambda: janela_acao("excluir")),
+        ("Listar", lambda: janela_acao("listar")),
+    ]
 
-       
-        disciplina_frame = tk.LabelFrame(main_frame, text="Cadastro da Disciplina", font=section_font, bg="#f0f0f0", fg="#333333", padx=10, pady=10)
-        disciplina_frame.pack(fill="x", pady=10)
-        tk.Label(disciplina_frame, text="Código da Disciplina:", bg="#f0f0f0", fg="#333333", font=label_font).grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.codigo_entry = tk.Entry(disciplina_frame, bg="#ffffff", fg="#333333", font=label_font, width=30)
-        self.codigo_entry.grid(row=0, column=1, padx=5, pady=5)
+    for texto, comando in botoes:
+        tk.Button(frame, text=texto, command=comando, width=20, bg="#007acc", fg="white").pack(pady=8)
 
-        tk.Label(disciplina_frame, text="Nome da Disciplina:", bg="#f0f0f0", fg="#333333", font=label_font).grid(row=1, column=0, sticky="e", padx=5, pady=5)
-        self.disciplina_entry = tk.Entry(disciplina_frame, bg="#ffffff", fg="#333333", font=label_font, width=30)
-        self.disciplina_entry.grid(row=1, column=1, padx=5, pady=5)
-
-        tk.Button(disciplina_frame, text="Adicionar Disciplina", command=self.add_disciplina, bg="#4CAF50", fg="white", font=button_font).grid(row=2, column=0, columnspan=2, pady=10)
-
-       
-        nota_frame = tk.LabelFrame(main_frame, text="Adicionar Nota", font=section_font, bg="#f0f0f0", fg="#333333", padx=10, pady=10)
-        nota_frame.pack(fill="x", pady=10)
-        tk.Label(nota_frame, text="Nota:", bg="#f0f0f0", fg="#333333", font=label_font).grid(row=0, column=0, sticky="e", padx=5, pady=5)
-        self.nota_entry = tk.Entry(nota_frame, bg="#ffffff", fg="#333333", font=label_font, width=30)
-        self.nota_entry.grid(row=0, column=1, padx=5, pady=5)
-
-        tk.Button(nota_frame, text="Adicionar Nota", command=self.add_nota, bg="#4CAF50", fg="white", font=button_font).grid(row=1, column=0, columnspan=2, pady=10)
-
-        tk.Button(nota_frame, text="Buscar Notas", command=self.mostrar_notas, bg="#2196F3", fg="white", font=button_font).grid(row=2, column=0, columnspan=2, pady=10)
-
-    def add_aluno(self):
-        matricula = self.matricula_entry.get()
-        nome = self.nome_entry.get()
-        if not matricula or not nome:
-            messagebox.showerror("Erro", "Todos os campos devem ser preenchidos.")
-            return
-        adicionar_aluno(int(matricula), nome)
-        messagebox.showinfo("Sucesso", "Aluno adicionado com sucesso.")
-
-    def add_disciplina(self):
-        codigo = self.codigo_entry.get()
-        nome = self.disciplina_entry.get()
-        if not codigo or not nome:
-            messagebox.showerror("Erro", "Todos os campos devem ser preenchidos.")
-            return
-        adicionar_disciplina(int(codigo), nome)
-        messagebox.showinfo("Sucesso", "Disciplina adicionada com sucesso.")
-
-    def add_nota(self):
-        matricula = self.matricula_entry.get()
-        codigo = self.codigo_entry.get()
-        nota = self.nota_entry.get()
-        if not matricula or not codigo or not nota:
-            messagebox.showerror("Erro", "Todos os campos devem ser preenchidos.")
-            return
-        adicionar_nota(int(matricula), int(codigo), float(nota))
-        messagebox.showinfo("Sucesso", "Nota adicionada com sucesso.")
-
-    def mostrar_notas(self):
-        matricula = self.matricula_entry.get()
-        if not matricula:
-            messagebox.showerror("Erro", "Informe a matrícula do aluno.")
-            return
-        resultados = buscar_notas(int(matricula))
-        if not resultados:
-            messagebox.showinfo("Notas", "Nenhuma nota encontrada.")
-        else:
-            notas = "\n".join([f"{disciplina}: {nota}" for disciplina, nota in resultados])
-            messagebox.showinfo("Notas", notas)
-
+    root.mainloop()
 
 if __name__ == "__main__":
-    criar_bancodados()
-    root = tk.Tk()
-    root.iconbitmap('img.jpg')  
-    interface = Interface(root)
-    root.mainloop()
+    criar_banco()
+    criar_interface()
